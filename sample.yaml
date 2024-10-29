@@ -1,0 +1,52 @@
+apiVersion: core.oam.dev/v1beta1
+kind: Application
+metadata:
+  name: first-vela-app  # アプリケーションの名前
+spec:
+  components:
+    - name: express-server  # コンポーネントの名前（Express.jsサーバー）
+      type: webservice       # コンポーネントのタイプ、"webservice"はWebアプリのデプロイ用
+      properties:
+        image: oamdev/hello-world  # 使用するコンテナイメージ
+        ports:
+         - port: 8000         # コンテナのポート番号（アプリがリッスンするポート）
+           expose: true       # このポートを外部に公開する設定
+      traits:
+        - type: scaler        # トレイトのタイプ、スケーリングに関する設定
+          properties:
+            replicas: 1       # レプリカ数、最初は1つのインスタンスを起動
+  policies:
+    - name: target-default     # ポリシーの名前（デフォルトターゲット環境へのデプロイ用）
+      type: topology           # ポリシーのタイプ、トポロジーに関する設定
+      properties:
+        # KubeVelaがインストールされたローカルクラスターにデプロイ
+        clusters: ["local"]    
+        namespace: "default"   # デフォルトの名前空間にデプロイ
+    - name: target-prod        # ポリシーの名前（プロダクション環境へのデプロイ用）
+      type: topology           # トポロジーに関する設定
+      properties:
+        clusters: ["local"]    # ローカルクラスターにデプロイ
+        # この名前空間は事前に作成しておく必要がある
+        namespace: "prod"      # "prod"という名前空間にデプロイ
+    - name: deploy-ha          # ポリシーの名前（高可用性デプロイ用）
+      type: override           # 上書き（オーバーライド）設定を定義
+      properties:
+        components:
+          - type: webservice   # "webservice"タイプのコンポーネントに適用
+            traits:
+              - type: scaler   # スケーリング設定をオーバーライド
+                properties:
+                  replicas: 2  # レプリカ数を2に設定（高可用性のため）
+  workflow:
+    steps:
+      - name: deploy2default   # ワークフローのステップ名
+        type: deploy           # デプロイステップ
+        properties:
+          policies: ["target-default"]  # "target-default"ポリシーに従ってデプロイ
+      - name: manual-approval   # ワークフローのステップ名（手動承認）
+        type: suspend           # 一時停止、手動で承認が必要
+      - name: deploy2prod       # プロダクション環境へのデプロイステップ
+        type: deploy            # デプロイステップ
+        properties:
+          # "target-prod"と"deploy-ha"ポリシーに従ってデプロイ
+          policies: ["target-prod", "deploy-ha"]
